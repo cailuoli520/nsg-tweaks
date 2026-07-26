@@ -2,6 +2,8 @@
 
 An LSPosed module that extends [NSG (QuickTest)](https://play.google.com/store/apps/details?id=com.qtrun.QuickTest) with additional columns, rows, signaling tools, and log-replay improvements.
 
+[![tg_badge]](https://t.me/mtbtoolapp)
+
 ---
 
 ## Requirements
@@ -248,3 +250,5 @@ MIT
 ## Development note
 
 Parts of this module were developed with the assistance of AI coding tools.
+
+[tg_badge]: https://img.shields.io/badge/TG-Channel-4991D3?style=for-the-badge&logo=telegram
