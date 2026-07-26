@@ -29,8 +29,7 @@ public class MainHook extends XposedModule {
         new SignalingShareHook(this, param.getClassLoader()).install();
         new ScrollBarHook(this, param.getClassLoader()).install();
         new SignalingSearchHook(this, param.getClassLoader()).install();
-        LteBandwidthColumnHook lteBwHook = new LteBandwidthColumnHook(this, param.getClassLoader());
-        lteBwHook.install();
+        new LteBandwidthColumnHook(this, param.getClassLoader()).install();
         new LteRsrpRowHook(this, param.getClassLoader()).install();
         new EutraRsrpRowHook(this, param.getClassLoader()).install();
         new LteCellColorHook(this, param.getClassLoader()).install();
