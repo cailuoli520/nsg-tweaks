@@ -17,12 +17,13 @@ import io.github.libxposed.api.XposedInterface.Hooker;
 
 /**
  * Hooks a8.h$a (NRNSACellsFragment adapter) to inject an ARFCN column (labelled "Band")
- * at index 1 of the main NR cell row, and removes the NSG info sub-row.
+ * at index 1 of the main NR cell row, and conditionally hides the NSG info sub-row.
  *
  * ARFCN is read directly from the DataSource via Workspace/Property reflection —
  * the same pattern as NrNsaBandwidthColumnHook and NrSaCellColumnsHook.
- * This avoids dependence on NSG's sub-row UI, which is not reliably populated
- * during log replay.
+ * This avoids dependence on NSG's sub-row UI for ARFCN, which is not reliably
+ * populated during log replay. The sub-row itself is kept visible when the
+ * cell-DB CSV populates tvRowCellName/tvRowCellID, hidden when empty.
  *
  * Signal paths:
  *   serving  : NR5G::Cell_Measurements::NR_Cells_ARFCN       (Integer[], index=intraRow)
@@ -68,6 +69,11 @@ public class BandColumnHook {
     private Method hMethod;  // a8.b$b.h(int) — returns Pair<source, intraRow>
 
     private boolean reflectionReady = false;
+    private static volatile boolean nrCellDbLoaded = false;
+    private static boolean cellDbHookInstalled = false;
+    private Class<?> f7bClass;
+    private Method  f7bEMethod;
+    private Method  f7bDMethod;
     /** k8.c field "c" (f5509c) — the data sample key the adapter used for its current data. */
     private Field  f5509cField;
 
@@ -117,8 +123,32 @@ public class BandColumnHook {
     }
 
     public void install() {
+        hookCellDbStatus();
         hookGetView();
         hookOnCreateView();
+    }
+
+    private void hookCellDbStatus() {
+        if (cellDbHookInstalled) return;
+        try {
+            Class<?> cls = ClassMapping.loadClass("f7.b", loader);
+            if (cls == null) return;
+            Method dMethod = cls.getMethod("d", String.class);
+            xposed.hook(dMethod).intercept(new Hooker() {
+                @Override
+                public Object intercept(@NonNull XposedInterface.Chain chain) throws Throwable {
+                    Object result = chain.proceed();
+                    String tech = (String) chain.getArg(0);
+                    if ("NR5G".equals(tech)) {
+                        nrCellDbLoaded = (result != null);
+                    }
+                    return result;
+                }
+            });
+            cellDbHookInstalled = true;
+        } catch (Exception e) {
+            Log.w(TAG, "BandColumnHook: hookCellDbStatus failed: " + e);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -239,9 +269,40 @@ public class BandColumnHook {
                     LinearLayout mainRow = (LinearLayout) firstChild;
                     if (mainRow.getOrientation() != LinearLayout.HORIZONTAL) return result;
 
-                    // Hide the info sub-row (child[1]) if present — reclaims vertical space.
-                    if (outerVert.getChildCount() >= 2)
-                        outerVert.getChildAt(1).setVisibility(View.GONE);
+                    if (outerVert.getChildCount() >= 2) {
+                        View subRow = outerVert.getChildAt(1);
+                        if (subRow instanceof ViewGroup) {
+                            ViewGroup subRowVg = (ViewGroup) subRow;
+                            boolean hasData = false;
+                            if (isNrCellDbLoaded()) {
+                                String pkg = "com.qtrun.QuickTest";
+                                int cellNameId = subRowVg.getResources().getIdentifier("tvRowCellName", "id", pkg);
+                                int cellIdId = subRowVg.getResources().getIdentifier("tvRowCellID", "id", pkg);
+                                if (cellNameId != 0 && cellIdId != 0) {
+                                    View cn = subRowVg.findViewById(cellNameId);
+                                    View ci = subRowVg.findViewById(cellIdId);
+                                    if (cn instanceof TextView && ci instanceof TextView) {
+                                        CharSequence cnText = ((TextView) cn).getText();
+                                        CharSequence ciText = ((TextView) ci).getText();
+                                        hasData = (cnText != null && cnText.length() > 0)
+                                                || (ciText != null && ciText.length() > 0);
+                                    }
+                                }
+                            }
+                            if (hasData) {
+                                subRow.setVisibility(View.VISIBLE);
+                                int rfidId = subRowVg.getResources().getIdentifier("tvRowRFID", "id", "com.qtrun.QuickTest");
+                                if (rfidId != 0) {
+                                    View rfid = subRowVg.findViewById(rfidId);
+                                    if (rfid != null) rfid.setVisibility(View.GONE);
+                                }
+                            } else {
+                                subRow.setVisibility(View.GONE);
+                            }
+                        } else {
+                            subRow.setVisibility(View.GONE);
+                        }
+                    }
 
                     // Resolve serving/intraRow via adapter reflection.
                     int     position  = (int) chain.getArg(0);
@@ -421,6 +482,10 @@ public class BandColumnHook {
         View v = mainRow.getChildAt(2);
         if (!(v instanceof TextView)) return null;
         return ((TextView) v).getTextColors();
+    }
+
+    private boolean isNrCellDbLoaded() {
+        return nrCellDbLoaded;
     }
 
     private int resolveColor(android.content.Context ctx, int attr) {

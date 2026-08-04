@@ -20,8 +20,9 @@ import io.github.libxposed.api.XposedInterface.Hooker;
  *   - ARFCN  — inserted at column index 1 (before PCI), per-row value
  *   - BW     — inserted at column index 3 (after PCI, before Beam), serving rows only
  *
- * Also hides the sub-row (child[1] of the outer vertical LinearLayout per row)
- * which previously showed ARFCN/Band combined in tvRowRFID, reclaiming 22dp per row.
+ * Also conditionally hides the sub-row (child[1] of the outer vertical LinearLayout
+ * per row): kept visible when the cell-DB CSV has data for the cell (tvRowCellName/
+ * tvRowCellID non-empty), hidden when empty — reclaiming 22dp per row when no data.
  *
  * Final top-row column order (8 columns):
  *   [0] Serving  [1] ARFCN  [2] PCI  [3] BW  [4] Beam  [5] RSRP  [6] RSRQ  [7] SINR
@@ -70,6 +71,8 @@ public class NrSaCellColumnsHook {
     private Method gMethod;      // g(int) → Pair<a8.d.a, Integer>
 
     private boolean ready = false;
+    private static volatile boolean nrCellDbLoaded = false;
+    private static boolean cellDbHookInstalled = false;
     /**
      * Sample key captured from a8.d.b(DataSource, long j10, …) callback.
      * a8.d.a extends k8.b, NOT k8.c, so there is no f5509c field to read.
@@ -130,11 +133,35 @@ public class NrSaCellColumnsHook {
             Log.w(TAG, "NrSaCellColumnsHook: skipping install — reflection not ready");
             return;
         }
+        hookCellDbStatus();
         hookDataCallback();
         hookGetView();
         hookOnCreateView();
         hookH8bQ();
         Log.i(TAG, "NrSaCellColumnsHook: installed");
+    }
+
+    private void hookCellDbStatus() {
+        if (cellDbHookInstalled) return;
+        try {
+            Class<?> cls = ClassMapping.loadClass("f7.b", loader);
+            if (cls == null) return;
+            Method dMethod = cls.getMethod("d", String.class);
+            xposed.hook(dMethod).intercept(new Hooker() {
+                @Override
+                public Object intercept(@NonNull XposedInterface.Chain chain) throws Throwable {
+                    Object result = chain.proceed();
+                    String tech = (String) chain.getArg(0);
+                    if ("NR5G".equals(tech)) {
+                        nrCellDbLoaded = (result != null);
+                    }
+                    return result;
+                }
+            });
+            cellDbHookInstalled = true;
+        } catch (Exception e) {
+            Log.w(TAG, "NrSaCellColumnsHook: hookCellDbStatus failed: " + e);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -299,7 +326,7 @@ public class NrSaCellColumnsHook {
     }
 
     // -----------------------------------------------------------------------
-    // Hook 1: a8.i$a.getView — inject ARFCN + BW columns, hide sub-row
+    // Hook 1: a8.i$a.getView — inject ARFCN + BW columns, conditionally hide sub-row
     // -----------------------------------------------------------------------
 
     private void hookGetView() {
@@ -344,9 +371,38 @@ public class NrSaCellColumnsHook {
                         topRow.setLayoutParams(topRowLp);
                     }
 
-                    // Sub-row (child[1]) — hide it always
                     View subRow = outer.getChildAt(1);
-                    if (subRow != null) subRow.setVisibility(View.GONE);
+                    if (subRow instanceof ViewGroup) {
+                        ViewGroup subRowVg = (ViewGroup) subRow;
+                        boolean hasData = false;
+                        if (isNrCellDbLoaded()) {
+                            String pkg = "com.qtrun.QuickTest";
+                            int cellNameId = subRowVg.getResources().getIdentifier("tvRowCellName", "id", pkg);
+                            int cellIdId = subRowVg.getResources().getIdentifier("tvRowCellID", "id", pkg);
+                            if (cellNameId != 0 && cellIdId != 0) {
+                                View cn = subRowVg.findViewById(cellNameId);
+                                View ci = subRowVg.findViewById(cellIdId);
+                                if (cn instanceof TextView && ci instanceof TextView) {
+                                    CharSequence cnText = ((TextView) cn).getText();
+                                    CharSequence ciText = ((TextView) ci).getText();
+                                    hasData = (cnText != null && cnText.length() > 0)
+                                            || (ciText != null && ciText.length() > 0);
+                                }
+                            }
+                        }
+                        if (hasData) {
+                            subRow.setVisibility(View.VISIBLE);
+                            int rfidId = subRowVg.getResources().getIdentifier("tvRowRFID", "id", "com.qtrun.QuickTest");
+                            if (rfidId != 0) {
+                                View rfid = subRowVg.findViewById(rfidId);
+                                if (rfid != null) rfid.setVisibility(View.GONE);
+                            }
+                        } else {
+                            subRow.setVisibility(View.GONE);
+                        }
+                    } else {
+                        subRow.setVisibility(View.GONE);
+                    }
 
                     // Resolve serving/intraRow
                     boolean isServing = false;
@@ -556,6 +612,10 @@ public class NrSaCellColumnsHook {
         lp.weight = weight;
         tv.setLayoutParams(lp);
         return tv;
+    }
+
+    private boolean isNrCellDbLoaded() {
+        return nrCellDbLoaded;
     }
 
     private int resolveColor(android.content.Context ctx, int attr) {
