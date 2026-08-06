@@ -33,7 +33,7 @@ public class MainHook extends XposedModule {
         new LteRsrpRowHook(this, param.getClassLoader()).install();
         new EutraRsrpRowHook(this, param.getClassLoader()).install();
         new LteCellColorHook(this, param.getClassLoader()).install();
-        new NrSaRsrpRowHook(this, param.getClassLoader(),
+        new SACAMatrixDLHook(this, param.getClassLoader(),
                 NrSaCsiSnrRowHook.carrierCountInO0).install();
         new NrSaCsiSnrRowHook(this, param.getClassLoader()).install();
         new NrSaModUsageRowHook(this, param.getClassLoader(),
@@ -44,6 +44,7 @@ public class MainHook extends XposedModule {
         new RenamePuschTxLabelHook(this, param.getClassLoader()).install();
         new NrSaMimoFormatHook(this, param.getClassLoader()).install();
         new NrSaBwpIdHook(this, param.getClassLoader()).install();
+        new BwpUlBwDedicatedModeHook(this, param.getClassLoader()).install();
         new NrSaHeaderPathlossHook(this, param.getClassLoader()).install();
         new NrSaCellColorHook(this, param.getClassLoader(),
                 NrSaCsiSnrRowHook.saK2aCarriers).install();
