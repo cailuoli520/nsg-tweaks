@@ -73,11 +73,9 @@ public class SignalingShareHook {
     /** Tag set on the popup contentView once the Share button has been injected. */
     private static final String SHARE_BTN_TAG = "nsg_share_btn_added";
 
-    /** Resource ID of the copy button inside the signaling detail popup. */
-    private static final int ID_DETAIL_COPY = 0x7f0900dd;
-
-    /** Resource ID of the message TextView inside the signaling detail popup. */
-    private static final int ID_DETAIL_TEXT = 0x7f0900dc;
+    private int idDetailCopy = 0x7f0900dd;
+    private int idDetailText = 0x7f0900dc;
+    private boolean resIdsResolved = false;
 
     private final XposedInterface xposed;
     private final ClassLoader loader;
@@ -151,6 +149,21 @@ public class SignalingShareHook {
         }
     }
 
+    private void ensureResIds(Context ctx) {
+        if (resIdsResolved) return;
+        try {
+            int copy = ctx.getResources().getIdentifier(
+                    "detail_copy", "id", "com.qtrun.QuickTest");
+            int text = ctx.getResources().getIdentifier(
+                    "detail", "id", "com.qtrun.QuickTest");
+            if (copy != 0) idDetailCopy = copy;
+            if (text != 0) idDetailText = text;
+            resIdsResolved = true;
+        } catch (Throwable t) {
+            Log.w(TAG, "SignalingShareHook: ensureResIds failed: " + t);
+        }
+    }
+
     /**
      * Scans all declared fields of {@code clazz} (and its superclasses) for the
      * first field whose type is exactly {@code targetType}.
@@ -217,6 +230,8 @@ public class SignalingShareHook {
                         if (!(contentView instanceof FrameLayout)) return result;
                         FrameLayout frameLayout = (FrameLayout) contentView;
 
+                        ensureResIds(contentView.getContext());
+
                         // Extract message title from the tapped list row view.
                         // Use a String[] holder so the OnClickListener always reads the
                         // latest title even when the PopupWindow is reused across opens.
@@ -252,7 +267,7 @@ public class SignalingShareHook {
                         // type and force mSelectionControllerEnabled via reflection.
                         try {
                             final TextView detailTv =
-                                    (TextView) contentView.findViewById(ID_DETAIL_TEXT);
+                                    (TextView) contentView.findViewById(idDetailText);
                             if (detailTv != null) {
                                 detailTv.setTextIsSelectable(true);
                                 detailTv.setEllipsize(null);
@@ -325,7 +340,7 @@ public class SignalingShareHook {
                         contentView.setTag(SHARE_BTN_TAG);
 
                         // Find the Copy button
-                        Button copyBtn = contentView.findViewById(ID_DETAIL_COPY);
+                        Button copyBtn = contentView.findViewById(idDetailCopy);
                         if (copyBtn == null) {
                             Log.w(TAG, "SignalingShareHook: detail_copy button not found");
                             return result;
@@ -421,7 +436,7 @@ public class SignalingShareHook {
                         shareBtn.setOnClickListener(new View.OnClickListener() {
                             @Override
                             public void onClick(View v) {
-                                TextView detailTv = frameLayout.findViewById(ID_DETAIL_TEXT);
+                                TextView detailTv = frameLayout.findViewById(idDetailText);
                                 String messageText = detailTv != null
                                         ? detailTv.getText().toString()
                                         : "";
@@ -513,7 +528,7 @@ public class SignalingShareHook {
                         Object thiz = chain.getThisObject();
                         if (thiz instanceof TextView) {
                             TextView tv = (TextView) thiz;
-                            if (tv.getId() == ID_DETAIL_TEXT) {
+                            if (tv.getId() == idDetailText) {
                                 setMMGuard = true;
                                 try {
                                     tv.setMovementMethod(
@@ -557,7 +572,7 @@ public class SignalingShareHook {
                             PopupWindow popup = (PopupWindow) chain.getThisObject();
                             View contentView = popup.getContentView();
                             if (contentView != null
-                                    && contentView.findViewById(ID_DETAIL_TEXT) != null) {
+                                    && contentView.findViewById(idDetailText) != null) {
                                 setFocusableGuard = true;
                                 try {
                                     try {
@@ -600,7 +615,7 @@ public class SignalingShareHook {
                 public Object intercept(@NonNull XposedInterface.Chain chain) throws Throwable {
                     try {
                         View view = (View) chain.getThisObject();
-                        if (view.getId() == ID_DETAIL_TEXT) {
+                        if (view.getId() == idDetailText) {
                             ActionMode.Callback cb = (ActionMode.Callback) chain.getArg(0);
                             int type = (int) chain.getArg(1);
                             Activity activity = extractActivity(view.getContext());
@@ -649,7 +664,7 @@ public class SignalingShareHook {
                 @Override
                 public Object intercept(@NonNull XposedInterface.Chain chain) throws Throwable {
                     View parent = (View) chain.getArg(0);
-                    if (parent.getId() == ID_DETAIL_TEXT) {
+                    if (parent.getId() == idDetailText) {
                         try {
                             Activity activity = extractActivity(parent.getContext());
                             if (activity != null) {
@@ -838,7 +853,7 @@ public class SignalingShareHook {
                     try {
                         if (!(boolean) result) {
                             View view = (View) chain.getThisObject();
-                            if (view.getId() == ID_DETAIL_TEXT) {
+                            if (view.getId() == idDetailText) {
                                 return true;
                             }
                         }

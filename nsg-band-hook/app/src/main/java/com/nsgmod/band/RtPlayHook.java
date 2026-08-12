@@ -41,8 +41,7 @@ import io.github.libxposed.api.XposedInterface.Hooker;
 public class RtPlayHook {
 
     private static final String TAG     = "NSGBandHook:RtPlay";
-    /** Resource ID of the forward (+0.5s) button — smali-confirmed: 0x7f09022c */
-    private static final int    ID_FWD  = 0x7f09022c;
+    private int idFwd = 0x7f09022c;
 
     private final XposedInterface xposed;
     private final ClassLoader     loader;
@@ -119,15 +118,15 @@ if (fragmentClass == null || advActAClass == null || workspaceClass == null
             }
 
             // k8.f
-            onCreateViewMethod = fragmentClass.getDeclaredMethod(
-                    "I", inflaterClass, viewGroupClass, bundleClass);
-fragmentYField    = fragmentClass.getDeclaredField("Y"); fragmentYField.setAccessible(true);
-            fragmentZField    = fragmentClass.getDeclaredField("Z"); fragmentZField.setAccessible(true);
+            onCreateViewMethod = ClassMapping.getDeclaredMethod(
+                    fragmentClass, "k8.f", "I", loader, inflaterClass, viewGroupClass, bundleClass);
+            fragmentYField    = fragmentClass.getDeclaredField(ClassMapping.runtimeFieldName("k8.f", "Y", loader)); fragmentYField.setAccessible(true);
+            fragmentZField    = fragmentClass.getDeclaredField(ClassMapping.runtimeFieldName("k8.f", "Z", loader)); fragmentZField.setAccessible(true);
 fragmentI0Method  = ClassMapping.getDeclaredMethod(fragmentClass, "k8.f", "i0", loader, float.class);
             fragmentI0Method.setAccessible(true);
 // AdvancedActivity.a back-ref to k8.f: runtime "a", JADX mangles to "f3807a"
             Field f3807a = null;
-            for (String candidate : new String[]{"a", "f3807a", "f3863a"}) {
+            for (String candidate : new String[]{ClassMapping.runtimeFieldName("com.qtrun.nsg.AdvancedActivity$a", "a", loader), "f3807a", "f3863a"}) {
                 try {
                     f3807a = advActAClass.getDeclaredField(candidate);
 break;
@@ -152,9 +151,9 @@ wsJ      = workspaceClass.getField(wsSingletonName);
             wsI      = workspaceClass.getDeclaredField(wsDateName); wsI.setAccessible(true);
             wsC      = workspaceClass.getDeclaredField(wsDataSourceName); wsC.setAccessible(true);
             wsF      = workspaceClass.getDeclaredField(wsAttrName); wsF.setAccessible(true);
-            wsGMethod = workspaceClass.getDeclaredMethod("g", long.class, Object.class);
+            wsGMethod = ClassMapping.getDeclaredMethod(workspaceClass, "com.qtrun.sys.Workspace", "g", loader, long.class, Object.class);
             wsGMethod.setAccessible(true);
-            wsIMethod = workspaceClass.getDeclaredMethod("i");
+            wsIMethod = ClassMapping.getDeclaredMethod(workspaceClass, "com.qtrun.sys.Workspace", "i", loader);
             wsIMethod.setAccessible(true);
 // Attribute → Property
             attrD = attrClass.getDeclaredField("d"); attrD.setAccessible(true);
@@ -169,11 +168,21 @@ wsJ      = workspaceClass.getField(wsSingletonName);
             try {
                 maAMMethod = ClassMapping.getDeclaredMethod(maAClass, "ma.a", "m", loader, dateClass);
                 maAMMethod.setAccessible(true);
-} catch (NoSuchMethodException nsme) {
-Class<?> v8aClass = Class.forName("v8.a", false, loader);
-                maAMMethod = ClassMapping.getDeclaredMethod(v8aClass, "ma.a", "m", loader, dateClass);
-                maAMMethod.setAccessible(true);
-}
+            } catch (NoSuchMethodException nsme) {
+                try {
+                    Class<?> u31Class = ClassMapping.loadClass("k8.j", loader);
+                    maAMMethod = u31Class.getDeclaredMethod("e", dateClass);
+                    maAMMethod.setAccessible(true);
+                } catch (Throwable t2) {
+                    try {
+                        Class<?> v8aClass = Class.forName("v8.a", false, loader);
+                        maAMMethod = ClassMapping.getDeclaredMethod(v8aClass, "ma.a", "m", loader, dateClass);
+                        maAMMethod.setAccessible(true);
+                    } catch (Throwable t3) {
+                        Log.w(TAG, "RtPlayHook: timestamp formatter not found, continuing without label sync: " + t3);
+                    }
+                }
+            }
 
             reflectionReady = true;
             Log.i(TAG, "initReflection ready");
@@ -209,7 +218,7 @@ if (result instanceof View) {
         // the next attachButton() creates a second loop → double playback speed.
         try {
             Class<?> advActClass = ClassMapping.loadClass("com.qtrun.nsg.AdvancedActivity", loader);
-            Method jMethod = advActClass.getDeclaredMethod("J");
+            Method jMethod = ClassMapping.getDeclaredMethod(advActClass, "com.qtrun.nsg.AdvancedActivity", "J", loader);
 xposed.hook(jMethod).intercept(new Hooker() {
                 @Override
                 public Object intercept(@NonNull XposedInterface.Chain chain) throws Throwable {
@@ -233,11 +242,20 @@ if (ctrl != null) {
 if (!SettingsToggleHook.rtPlayEnabled()) {
 return;
         }
-        View forwardBtn = rootView.findViewById(ID_FWD);
-        if (forwardBtn == null) {
-            Log.w(TAG, "playback_forward_500ms (0x7f09022c) not found in view tree");
+        View tempBtn = rootView.findViewById(idFwd);
+        if (tempBtn == null) {
+            int resolved = rootView.getContext().getResources().getIdentifier(
+                    "playback_forward_500ms", "id", "com.qtrun.QuickTest");
+            if (resolved != 0 && resolved != idFwd) {
+                idFwd = resolved;
+                tempBtn = rootView.findViewById(idFwd);
+            }
+        }
+        if (tempBtn == null) {
+            Log.w(TAG, "playback_forward_500ms not found in view tree");
             return;
         }
+        final View forwardBtn = tempBtn;
 ViewGroup parent = (ViewGroup) forwardBtn.getParent();
         if (!(parent instanceof LinearLayout)) {
             Log.w(TAG, "parent is not LinearLayout: " + parent.getClass().getName());

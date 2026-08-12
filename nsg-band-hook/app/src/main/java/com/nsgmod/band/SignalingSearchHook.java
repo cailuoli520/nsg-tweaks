@@ -1,5 +1,6 @@
 package com.nsgmod.band;
 
+import android.content.Context;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -52,8 +53,8 @@ public class SignalingSearchHook {
     private static final String TAG = "NSGBandHook";
     private static final String SEARCH_BAR_TAG = "nsg_search_bar_added";
 
-    /** Resource ID of the message TextView inside the signaling detail popup. */
-    private static final int ID_DETAIL_TEXT = 0x7f0900dc;
+    private int idDetailText = 0x7f0900dc;
+    private boolean resIdsResolved = false;
 
     private final XposedInterface xposed;
     private final ClassLoader loader;
@@ -123,6 +124,18 @@ public class SignalingSearchHook {
         return null;
     }
 
+    private void ensureResIds(Context ctx) {
+        if (resIdsResolved) return;
+        try {
+            int text = ctx.getResources().getIdentifier(
+                    "detail", "id", "com.qtrun.QuickTest");
+            if (text != 0) idDetailText = text;
+            resIdsResolved = true;
+        } catch (Throwable t) {
+            Log.w(TAG, "SignalingSearchHook: ensureResIds failed: " + t);
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Public entry point
     // -----------------------------------------------------------------------
@@ -182,6 +195,8 @@ public class SignalingSearchHook {
                         if (!(contentView instanceof FrameLayout)) return result;
                         final FrameLayout frame = (FrameLayout) contentView;
 
+                        ensureResIds(frame.getContext());
+
                         // Find the ScrollView
                         final ScrollView scrollView = findScrollView(frame);
                         if (scrollView == null) {
@@ -219,7 +234,7 @@ public class SignalingSearchHook {
                         final float density = ctx.getResources().getDisplayMetrics().density;
 
                         // Find the message TextView
-                        final TextView msgTextView = frame.findViewById(ID_DETAIL_TEXT);
+                        final TextView msgTextView = frame.findViewById(idDetailText);
                         if (msgTextView == null) {
                             Log.w(TAG, "SignalingSearchHook: message TextView not found");
                             return result;

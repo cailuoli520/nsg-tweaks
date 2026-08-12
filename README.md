@@ -11,6 +11,16 @@ An LSPosed module that extends [NSG (QuickTest)](https://play.google.com/store/a
 - **NSG** v4.8.6+ (`com.qtrun.QuickTest`)
 - **LSPosed** with API 102 or 101 support
 
+### Supported NSG versions
+
+| Flavor | Version | Status |
+|--------|---------|--------|
+| **qtrun** | v4.8.9 | Supported from NSG Tweaks v10.0 |
+| **qtrun** | v4.8.8 | Deprecated from v10.0 (use v4.8.9 or switch to gplay flavor) |
+| **gplay** | v4.8.8 | Still supported |
+
+> **Note:** NSG Tweaks v10.0 adds support for the **qtrun v4.8.9** flavor. The qtrun v4.8.8 flavor is no longer supported from v10.0 onward. The **gplay** (Google Play) v4.8.8 flavor remains fully supported.
+
 ---
 
 ## Installation
@@ -237,7 +247,7 @@ Note: the CA Matrix row additions (RSRP rows, CSI SNR, modulation utilisation ro
 - **RT-Play advances in fixed 1-second steps** with a 1-second pause between each step.
 - **Search results are capped at 200 matches** to keep the search responsive on very long messages.
 - **Fast refresh is UI-only.** The native modem data collection rate is the real bottleneck; this toggle only makes the UI poll cached data more frequently.
-- **NSG version sensitivity.** The module targets NSG v4.8.6. If NSG updates and renames its obfuscated classes, individual hooks will silently deactivate (a warning is logged; NSG itself will not crash).
+- **NSG version sensitivity.** The module targets NSG v4.8.6+ (gplay) and v4.8.9 (qtrun). If NSG updates and renames its obfuscated classes, individual hooks will silently deactivate (a warning is logged; NSG itself will not crash). The module auto-detects the installed flavor (qtrun vs gplay) and applies the correct class/field/method mappings at runtime.
 
 ---
 
