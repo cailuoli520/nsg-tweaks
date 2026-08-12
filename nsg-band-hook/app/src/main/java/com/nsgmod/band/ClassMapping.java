@@ -81,6 +81,7 @@ public final class ClassMapping {
         // k8 adapter/playback family -> t6
         map.put("k8.c", "t6.c");
         map.put("k8.f", "t6.f");
+        map.put("k8.j", "t6.j");
 
         // t7 settings/menu family -> c6
         map.put("t7.g0", "c6.q0");
@@ -121,6 +122,7 @@ public final class ClassMapping {
 
         map.put("h7.b", "q5.b");
         map.put("h7.e", "q5.e");
+        map.put("d7.a", "m5.a");
 
         GPLAY_OVERRIDES = Collections.unmodifiableMap(map);
 
@@ -249,6 +251,7 @@ public final class ClassMapping {
         qtrunClassMap.put("g8.b", "na0");
         qtrunClassMap.put("g8.h", "ua0");
         qtrunClassMap.put("g8.i", "va0");
+        qtrunClassMap.put("d7.a", "xa");
         qtrunClassMap.put("d7.i", "v00");
         qtrunClassMap.put("d7.i$c", "v00");
         qtrunClassMap.put("d7.i$k", "v00");
