@@ -4,6 +4,8 @@ import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.util.Log;
+import android.view.View;
+import android.view.ViewParent;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -13,10 +15,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.WeakHashMap;
 
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedInterface.Hooker;
@@ -36,11 +35,9 @@ public class NrNsaGnbIdHeaderHook {
     private boolean ready = false;
     private Class<?> cgiClass;
     private Field ecellIdValueField;
-    private Field tacValueField;
     private Field ecellIdLabelField;
+    private Field tacValueField;
     private Field tacLabelField;
-    private Field bandLabelField;
-    private Field bandValueField;
     private Field viewField;
     private Field gField;
     private Field colField;
@@ -58,18 +55,16 @@ public class NrNsaGnbIdHeaderHook {
     private Field ydGCellIdField;
     private Field settingsSingletonField;
     private Field gnbLengthField;
+    private Method onLayoutMethod;
 
     private int cachedArfcn = -1;
     private int cachedPci = -1;
     private long cachedGCellId = -1;
     private boolean originalsSaved = false;
-    private float origBandCol;
-    private float origBandWidth;
     private float origTacCol;
     private float origTacWidth;
     private float origEcellCol;
     private float origEcellWidth;
-    private final Set<Object> adjustedFragments = Collections.newSetFromMap(new WeakHashMap<>());
     private boolean loggedRatMode = false;
     private boolean loggedCellDb = false;
     private boolean loggedProps = false;
@@ -113,7 +108,7 @@ public class NrNsaGnbIdHeaderHook {
                 }
             });
 
-            Log.i(TAG, "NrNsaGnbIdHeaderHook installed");
+            Log.i(TAG, "NrNsaGnbIdHeaderHook installed (onLayout: " + (onLayoutMethod != null ? "direct" : "fallback") + ")");
         } catch (Throwable t) {
             Log.e(TAG, "NrNsaGnbIdHeaderHook install failed: " + t);
         }
@@ -127,25 +122,17 @@ public class NrNsaGnbIdHeaderHook {
                     ClassMapping.runtimeFieldName(CGI_FRAGMENT, "c1", loader));
             ecellIdValueField.setAccessible(true);
 
-            tacValueField = cgiClass.getDeclaredField(
-                    ClassMapping.runtimeFieldName(CGI_FRAGMENT, "b1", loader));
-            tacValueField.setAccessible(true);
-
             ecellIdLabelField = cgiClass.getDeclaredField(
                     ClassMapping.runtimeFieldName(CGI_FRAGMENT, "Y0", loader));
             ecellIdLabelField.setAccessible(true);
 
+            tacValueField = cgiClass.getDeclaredField(
+                    ClassMapping.runtimeFieldName(CGI_FRAGMENT, "b1", loader));
+            tacValueField.setAccessible(true);
+
             tacLabelField = cgiClass.getDeclaredField(
                     ClassMapping.runtimeFieldName(CGI_FRAGMENT, "X0", loader));
             tacLabelField.setAccessible(true);
-
-            bandLabelField = cgiClass.getDeclaredField(
-                    ClassMapping.runtimeFieldName(CGI_FRAGMENT, "Z0", loader));
-            bandLabelField.setAccessible(true);
-
-            bandValueField = cgiClass.getDeclaredField(
-                    ClassMapping.runtimeFieldName(CGI_FRAGMENT, "d1", loader));
-            bandValueField.setAccessible(true);
 
             Class<?> eh0Class = ClassMapping.loadClass("v6.g", loader);
             gField = eh0Class.getDeclaredField("g");
@@ -219,6 +206,15 @@ public class NrNsaGnbIdHeaderHook {
             } catch (Throwable ignored) {
             }
 
+            try {
+                Class<?> layoutClass = ClassMapping.loadClass("v6.d", loader);
+                onLayoutMethod = layoutClass.getDeclaredMethod("onLayout",
+                        boolean.class, int.class, int.class, int.class, int.class);
+            } catch (Throwable t) {
+                Log.w(TAG, "NrNsaGnbIdHeaderHook: onLayout method not found, using fallback");
+                onLayoutMethod = null;
+            }
+
             ready = true;
         } catch (Throwable t) {
             Log.e(TAG, "NrNsaGnbIdHeaderHook init failed: " + t);
@@ -239,110 +235,37 @@ public class NrNsaGnbIdHeaderHook {
         return 24;
     }
 
-    private void adjustGeometry(Object fragment) throws Throwable {
-        if (adjustedFragments.contains(fragment)) return;
-        Object ecellIdLabel = ecellIdLabelField.get(fragment);
-        Object ecellIdValue = ecellIdValueField.get(fragment);
-        Object tacLabel = tacLabelField.get(fragment);
-        Object tacValue = tacValueField.get(fragment);
-        Object bandLabel = bandLabelField.get(fragment);
-        Object bandValue = bandValueField.get(fragment);
-        if (ecellIdLabel == null || ecellIdValue == null || tacLabel == null || tacValue == null)
-            return;
-        if (!originalsSaved) {
-            Object bandElem = bandLabel != null ? bandLabel : bandValue;
-            if (bandElem != null) {
-                origBandCol = colField.getFloat(bandElem);
-                origBandWidth = widthField.getFloat(bandElem);
-            }
-            origTacCol = colField.getFloat(tacLabel);
-            origTacWidth = widthField.getFloat(tacLabel);
-            origEcellCol = colField.getFloat(ecellIdLabel);
-            origEcellWidth = widthField.getFloat(ecellIdLabel);
-            originalsSaved = true;
-        }
-        if (bandLabel != null) {
-            colField.setFloat(bandLabel, 21.0f);
-            widthField.setFloat(bandLabel, 12.0f);
-        }
-        if (bandValue != null) {
-            colField.setFloat(bandValue, 21.0f);
-            widthField.setFloat(bandValue, 12.0f);
-        }
-        colField.setFloat(tacLabel, 33.0f);
-        widthField.setFloat(tacLabel, 12.0f);
-        colField.setFloat(tacValue, 33.0f);
-        widthField.setFloat(tacValue, 12.0f);
-        colField.setFloat(ecellIdLabel, 45.0f);
-        widthField.setFloat(ecellIdLabel, 54.0f);
-        colField.setFloat(ecellIdValue, 45.0f);
-        widthField.setFloat(ecellIdValue, 54.0f);
-        adjustedFragments.add(fragment);
-    }
-
-    private void restoreGeometry(Object fragment) throws Throwable {
-        if (!adjustedFragments.contains(fragment)) return;
-        if (!originalsSaved) return;
-        Object ecellIdLabel = ecellIdLabelField.get(fragment);
-        Object ecellIdValue = ecellIdValueField.get(fragment);
-        Object tacLabel = tacLabelField.get(fragment);
-        Object tacValue = tacValueField.get(fragment);
-        Object bandLabel = bandLabelField.get(fragment);
-        Object bandValue = bandValueField.get(fragment);
-        if (bandLabel != null) {
-            colField.setFloat(bandLabel, origBandCol);
-            widthField.setFloat(bandLabel, origBandWidth);
-        }
-        if (bandValue != null) {
-            colField.setFloat(bandValue, origBandCol);
-            widthField.setFloat(bandValue, origBandWidth);
-        }
-        if (tacLabel != null) {
-            colField.setFloat(tacLabel, origTacCol);
-            widthField.setFloat(tacLabel, origTacWidth);
-        }
-        if (tacValue != null) {
-            colField.setFloat(tacValue, origTacCol);
-            widthField.setFloat(tacValue, origTacWidth);
-        }
-        if (ecellIdLabel != null) {
-            colField.setFloat(ecellIdLabel, origEcellCol);
-            widthField.setFloat(ecellIdLabel, origEcellWidth);
-        }
-        if (ecellIdValue != null) {
-            colField.setFloat(ecellIdValue, origEcellCol);
-            widthField.setFloat(ecellIdValue, origEcellWidth);
-        }
-        adjustedFragments.remove(fragment);
-    }
-
     @SuppressWarnings("unchecked")
     private void updateECellId(Object fragment, Object dataSource, short moduleIndex) throws Throwable {
-        Long gCellId = resolveGCellId(dataSource, moduleIndex);
-        if (gCellId == null) {
+        Object workspace = wsSingletonField.get(null);
+        if (workspace == null) {
             restoreGeometry(fragment);
             return;
         }
-        adjustGeometry(fragment);
-        injectGnbIdText(fragment, gCellId);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Long resolveGCellId(Object dataSource, short moduleIndex) throws Throwable {
-        Object workspace = wsSingletonField.get(null);
-        if (workspace == null) return null;
         Object rat = wsRatField.get(workspace);
-        if (rat == null) return null;
+        if (rat == null) {
+            restoreGeometry(fragment);
+            return;
+        }
         String ratStr = rat.toString();
         if (!"NR-NSA".equals(ratStr)) {
             if (!loggedRatMode) {
                 Log.w(TAG, "NrNsaGnbIdHeaderHook: RAT=" + ratStr + " (not NR-NSA), skipping");
                 loggedRatMode = true;
             }
-            return null;
+            restoreGeometry(fragment);
+            return;
         }
         loggedRatMode = false;
+        adjustGeometry(fragment);
 
+        Long gCellId = resolveGCellIdFromDb(dataSource, moduleIndex);
+        if (gCellId == null) return;
+        injectGnbIdText(fragment, gCellId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Long resolveGCellIdFromDb(Object dataSource, short moduleIndex) throws Throwable {
         Object sdInstance = sdSingletonField.get(null);
         if (sdInstance == null) {
             if (!loggedCellDb) {
@@ -397,6 +320,109 @@ public class NrNsaGnbIdHeaderHook {
         }
         if (cachedGCellId <= 0) return null;
         return cachedGCellId;
+    }
+
+    private void adjustGeometry(Object fragment) throws Throwable {
+        Object tacLabel = tacLabelField.get(fragment);
+        Object tacValue = tacValueField.get(fragment);
+        Object ecellIdLabel = ecellIdLabelField.get(fragment);
+        Object ecellIdValue = ecellIdValueField.get(fragment);
+        if (tacLabel == null || tacValue == null || ecellIdLabel == null || ecellIdValue == null)
+            return;
+        if (!originalsSaved) {
+            origTacCol = colField.getFloat(tacLabel);
+            origTacWidth = widthField.getFloat(tacLabel);
+            origEcellCol = colField.getFloat(ecellIdLabel);
+            origEcellWidth = widthField.getFloat(ecellIdLabel);
+            originalsSaved = true;
+        }
+        colField.setFloat(tacLabel, 36.0f);
+        widthField.setFloat(tacLabel, 19.0f);
+        colField.setFloat(tacValue, 36.0f);
+        widthField.setFloat(tacValue, 19.0f);
+        colField.setFloat(ecellIdLabel, 55.0f);
+        widthField.setFloat(ecellIdLabel, 44.0f);
+        colField.setFloat(ecellIdValue, 55.0f);
+        widthField.setFloat(ecellIdValue, 44.0f);
+        cacheLayoutAndRequest(fragment, tacLabel, tacValue, ecellIdLabel, ecellIdValue);
+    }
+
+    private void restoreGeometry(Object fragment) throws Throwable {
+        if (!originalsSaved) return;
+        Object tacLabel = tacLabelField.get(fragment);
+        Object tacValue = tacValueField.get(fragment);
+        Object ecellIdLabel = ecellIdLabelField.get(fragment);
+        Object ecellIdValue = ecellIdValueField.get(fragment);
+        boolean changed = false;
+        if (tacLabel != null) {
+            float c = colField.getFloat(tacLabel), w = widthField.getFloat(tacLabel);
+            colField.setFloat(tacLabel, origTacCol);
+            widthField.setFloat(tacLabel, origTacWidth);
+            if (c != origTacCol || w != origTacWidth) changed = true;
+        }
+        if (tacValue != null) {
+            float c = colField.getFloat(tacValue), w = widthField.getFloat(tacValue);
+            colField.setFloat(tacValue, origTacCol);
+            widthField.setFloat(tacValue, origTacWidth);
+            if (c != origTacCol || w != origTacWidth) changed = true;
+        }
+        if (ecellIdLabel != null) {
+            float c = colField.getFloat(ecellIdLabel), w = widthField.getFloat(ecellIdLabel);
+            colField.setFloat(ecellIdLabel, origEcellCol);
+            widthField.setFloat(ecellIdLabel, origEcellWidth);
+            if (c != origEcellCol || w != origEcellWidth) changed = true;
+        }
+        if (ecellIdValue != null) {
+            float c = colField.getFloat(ecellIdValue), w = widthField.getFloat(ecellIdValue);
+            colField.setFloat(ecellIdValue, origEcellCol);
+            widthField.setFloat(ecellIdValue, origEcellWidth);
+            if (c != origEcellCol || w != origEcellWidth) changed = true;
+        }
+        if (changed) {
+            cacheLayoutAndRequest(fragment, tacLabel, tacValue, ecellIdLabel, ecellIdValue);
+        }
+    }
+
+    private void cacheLayoutAndRequest(Object fragment, Object tacLabel, Object tacValue,
+                                        Object ecellIdLabel, Object ecellIdValue) {
+        View layout = getLayoutView(ecellIdValue);
+        if (layout == null) layout = getLayoutView(ecellIdLabel);
+        if (layout == null) layout = getLayoutView(tacLabel);
+        if (layout == null) layout = getLayoutView(tacValue);
+        if (layout == null) return;
+        forceOnLayout(layout);
+    }
+
+    private void forceOnLayout(View layout) {
+        if (onLayoutMethod == null) {
+            layout.requestLayout();
+            return;
+        }
+        layout.requestLayout();
+        layout.post(() -> {
+            try {
+                if (layout.getWidth() > 0 && layout.getHeight() > 0) {
+                    onLayoutMethod.setAccessible(true);
+                    onLayoutMethod.invoke(layout, true,
+                            layout.getLeft(), layout.getTop(),
+                            layout.getRight(), layout.getBottom());
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "NrNsaGnbIdHeaderHook forceOnLayout post error", t);
+            }
+        });
+    }
+
+    private View getLayoutView(Object elem) {
+        try {
+            if (elem == null) return null;
+            Object viewObj = viewField.get(elem);
+            if (!(viewObj instanceof View)) return null;
+            ViewParent parent = ((View) viewObj).getParent();
+            if (parent instanceof View) return (View) parent;
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     private void injectGnbIdText(Object fragment, long nci) throws Throwable {
