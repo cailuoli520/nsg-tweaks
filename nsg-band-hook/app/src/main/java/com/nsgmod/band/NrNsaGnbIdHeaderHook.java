@@ -49,7 +49,7 @@ public class NrNsaGnbIdHeaderHook {
     private Method sdIMethod;
     private Method dsGetPropertyMethod;
     private Constructor<?> iterConstructor;
-    private Method iterReverseMethod;
+    private Method iterReverseLongMethod;
     private Method iterEndMethod;
     private Method iterValueMethod;
     private Field ydGCellIdField;
@@ -99,8 +99,9 @@ public class NrNsaGnbIdHeaderHook {
                         }
                         List<Object> args = chain.getArgs();
                         Object dataSource = args.get(0);
+                        long timestamp = (Long) args.get(1);
                         short moduleIndex = (Short) args.get(2);
-                        updateECellId(fragment, dataSource, moduleIndex);
+                        updateECellId(fragment, dataSource, timestamp, moduleIndex);
                     } catch (Throwable t) {
                         Log.e(TAG, "NrNsaGnbIdHeaderHook update error", t);
                     }
@@ -185,9 +186,12 @@ public class NrNsaGnbIdHeaderHook {
             Class<?> iterClass = ClassMapping.loadClass("com.qtrun.sys.Property$Iterator", loader);
             iterConstructor = iterClass.getDeclaredConstructor(propClass);
             iterConstructor.setAccessible(true);
-            iterReverseMethod = iterClass.getDeclaredMethod("reverse");
+            iterReverseLongMethod = iterClass.getDeclaredMethod("reverse", long.class);
+            iterReverseLongMethod.setAccessible(true);
             iterEndMethod = iterClass.getDeclaredMethod("end");
+            iterEndMethod.setAccessible(true);
             iterValueMethod = iterClass.getDeclaredMethod("value");
+            iterValueMethod.setAccessible(true);
 
             Class<?> ydClass = ClassMapping.loadClass("h7.e", loader);
             ydGCellIdField = ydClass.getDeclaredField("g");
@@ -236,7 +240,7 @@ public class NrNsaGnbIdHeaderHook {
     }
 
     @SuppressWarnings("unchecked")
-    private void updateECellId(Object fragment, Object dataSource, short moduleIndex) throws Throwable {
+    private void updateECellId(Object fragment, Object dataSource, long timestamp, short moduleIndex) throws Throwable {
         Object workspace = wsSingletonField.get(null);
         if (workspace == null) {
             restoreGeometry(fragment);
@@ -259,13 +263,13 @@ public class NrNsaGnbIdHeaderHook {
         loggedRatMode = false;
         adjustGeometry(fragment);
 
-        Long gCellId = resolveGCellIdFromDb(dataSource, moduleIndex);
+        Long gCellId = resolveGCellIdFromDb(dataSource, timestamp, moduleIndex);
         if (gCellId == null) return;
         injectGnbIdText(fragment, gCellId);
     }
 
     @SuppressWarnings("unchecked")
-    private Long resolveGCellIdFromDb(Object dataSource, short moduleIndex) throws Throwable {
+    private Long resolveGCellIdFromDb(Object dataSource, long timestamp, short moduleIndex) throws Throwable {
         Object sdInstance = sdSingletonField.get(null);
         if (sdInstance == null) {
             if (!loggedCellDb) {
@@ -289,14 +293,14 @@ public class NrNsaGnbIdHeaderHook {
         Integer arfcn = null;
         Integer pci = null;
         for (int mi = 0; mi <= 3; mi++) {
-            arfcn = readIntProperty(dataSource, mi, KEY_NR_ARFCN);
-            pci = readIntProperty(dataSource, mi, KEY_NR_PCI);
+            arfcn = readIntProperty(dataSource, mi, timestamp, KEY_NR_ARFCN);
+            pci = readIntProperty(dataSource, mi, timestamp, KEY_NR_PCI);
             if (arfcn != null && pci != null) break;
         }
         if (arfcn == null || pci == null) {
             int miUsed = moduleIndex & 0xFFFF;
-            arfcn = readIntProperty(dataSource, miUsed, KEY_NR_ARFCN);
-            pci = readIntProperty(dataSource, miUsed, KEY_NR_PCI);
+            arfcn = readIntProperty(dataSource, miUsed, timestamp, KEY_NR_ARFCN);
+            pci = readIntProperty(dataSource, miUsed, timestamp, KEY_NR_PCI);
         }
         if (arfcn == null || pci == null) {
             if (!loggedProps) {
@@ -455,20 +459,20 @@ public class NrNsaGnbIdHeaderHook {
         }
     }
 
-    private Integer readIntProperty(Object dataSource, int moduleIndex, String key) {
-        Object value = readProperty(dataSource, moduleIndex, key);
+    private Integer readIntProperty(Object dataSource, int moduleIndex, long timestamp, String key) {
+        Object value = readProperty(dataSource, moduleIndex, timestamp, key);
         if (value == null) return null;
         if (value instanceof Integer) return (Integer) value;
         if (value instanceof Number) return ((Number) value).intValue();
         return null;
     }
 
-    private Object readProperty(Object dataSource, int moduleIndex, String key) {
+    private Object readProperty(Object dataSource, int moduleIndex, long timestamp, String key) {
         try {
             Object prop = dsGetPropertyMethod.invoke(dataSource, key, moduleIndex);
             if (prop == null) return null;
             Object iter = iterConstructor.newInstance(prop);
-            iterReverseMethod.invoke(iter);
+            iterReverseLongMethod.invoke(iter, timestamp);
             if ((boolean) iterEndMethod.invoke(iter)) return null;
             return iterValueMethod.invoke(iter);
         } catch (Throwable t) {
